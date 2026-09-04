@@ -1,17 +1,108 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#78b5e6">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#5dade2">
 <title>Ghoz World</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script><script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
-*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;touch-action:none;user-select:none;background:#78b5e6;font-family:Arial,sans-serif}canvas{display:block}
-#hud,#players{position:fixed;z-index:20;color:#fff;background:rgba(15,25,35,.58);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:9px 13px;backdrop-filter:blur(8px);pointer-events:none}#hud{top:max(12px,env(safe-area-inset-top));left:12px;min-width:160px}#playerName{font-weight:bold;font-size:14px}#status{margin-top:4px;font-size:12px;opacity:.85}#players{top:max(12px,env(safe-area-inset-top));right:12px;font-size:12px}
-#lookHint{position:fixed;z-index:18;right:15px;bottom:max(22px,env(safe-area-inset-bottom));color:#fff;background:rgba(15,25,35,.4);padding:9px 12px;border-radius:12px;font-size:11px;pointer-events:none;opacity:.8}
-#joystick{position:fixed;left:25px;bottom:max(25px,env(safe-area-inset-bottom));width:145px;height:145px;z-index:30;border-radius:50%;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.22);box-shadow:inset 0 0 25px rgba(0,0,0,.12),0 8px 25px rgba(0,0,0,.15);backdrop-filter:blur(8px);touch-action:none}#stick{position:absolute;width:68px;height:68px;left:50%;top:50%;margin:-34px;border-radius:50%;background:rgba(255,255,255,.65);border:3px solid rgba(255,255,255,.8);box-shadow:0 5px 15px rgba(0,0,0,.2);pointer-events:none}
-#loading{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;background:#78b5e6;color:#fff;transition:opacity .4s}#loadingTitle{font-size:28px;font-weight:800;margin-bottom:8px}.loader{width:38px;height:38px;margin-top:18px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-</style></head><body>
-<div id="loading"><div id="loadingTitle">GHOZ WORLD</div><div>Memuat dunia...</div><div class="loader"></div></div>
-<div id="hud"><div id="playerName">Player</div><div id="status">Menghubungkan...</div></div><div id="players">👥 <span id="playerCount">1</span> Player</div>
-<div id="lookHint">☝️ Geser layar untuk melihat sekeliling</div><div id="joystick"><div id="stick"></div></div>
-<script src="app.js"></script></body></html>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:#5dade2;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+canvas{display:block;position:fixed;inset:0}
+
+/* HUD */
+#hud,#players{
+  position:fixed;z-index:20;color:#fff;
+  background:rgba(20,30,50,.72);
+  border:2px solid rgba(255,255,255,.18);
+  border-radius:16px;padding:10px 14px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.25);
+}
+#hud{top:max(12px,env(safe-area-inset-top));left:12px;min-width:160px}
+#playerName{font-weight:800;font-size:15px;letter-spacing:.3px}
+#status{margin-top:3px;font-size:12px;opacity:.9}
+#players{top:max(12px,env(safe-area-inset-top));right:12px;font-size:13px;font-weight:600}
+
+/* Joystick */
+#joystick{
+  position:fixed;left:22px;bottom:max(28px,env(safe-area-inset-bottom));
+  width:140px;height:140px;z-index:30;border-radius:50%;
+  background:rgba(255,255,255,.14);
+  border:3px solid rgba(255,255,255,.28);
+  box-shadow:inset 0 0 30px rgba(0,0,0,.15),0 8px 28px rgba(0,0,0,.2);
+  backdrop-filter:blur(10px);touch-action:none;
+}
+#stick{
+  position:absolute;width:62px;height:62px;left:50%;top:50%;margin:-31px;
+  border-radius:50%;background:rgba(255,255,255,.72);
+  border:3px solid rgba(255,255,255,.9);
+  box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none;
+  transition:transform .05s linear;
+}
+#joystickLabel{
+  position:fixed;left:28px;bottom:max(8px,env(safe-area-inset-bottom));
+  z-index:29;color:rgba(255,255,255,.65);font-size:10px;font-weight:600;
+  pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.4);
+}
+
+/* Jump button */
+#jumpBtn{
+  position:fixed;right:28px;bottom:max(36px,env(safe-area-inset-bottom));
+  width:72px;height:72px;z-index:30;border-radius:50%;
+  background:linear-gradient(145deg,#ff6b6b,#ee5a24);
+  border:3px solid rgba(255,255,255,.45);
+  box-shadow:0 6px 20px rgba(238,90,36,.45),inset 0 2px 8px rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;color:#fff;font-weight:900;
+  touch-action:none;user-select:none;-webkit-user-select:none;
+  transition:transform .1s,box-shadow .1s;
+}
+#jumpBtn:active{transform:scale(.92);box-shadow:0 3px 12px rgba(238,90,36,.5)}
+
+/* Loading */
+#loading{
+  position:fixed;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;
+  background:linear-gradient(160deg,#5dade2 0%,#3498db 50%,#2980b9 100%);
+  color:#fff;transition:opacity .5s ease;
+}
+#loadingTitle{
+  font-size:32px;font-weight:900;letter-spacing:2px;
+  text-shadow:0 4px 16px rgba(0,0,0,.3);margin-bottom:6px;
+}
+#loadingSub{font-size:14px;opacity:.85;margin-bottom:4px}
+#loadingText{font-size:13px;opacity:.75}
+.loader{
+  width:42px;height:42px;margin-top:22px;
+  border:4px solid rgba(255,255,255,.25);border-top-color:#fff;
+  border-radius:50%;animation:spin .75s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fade-out{opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="loading">
+  <div id="loadingTitle">GHOZ WORLD</div>
+  <div id="loadingSub">✨ Roblox Style ✨</div>
+  <div id="loadingText">Memuat dunia...</div>
+  <div class="loader"></div>
+</div>
+
+<div id="hud">
+  <div id="playerName">Player</div>
+  <div id="status">Menghubungkan...</div>
+</div>
+<div id="players">👥 <span id="playerCount">1</span> Player</div>
+
+<div id="joystick"><div id="stick"></div></div>
+<div id="joystickLabel">Geser untuk bergerak</div>
+<div id="jumpBtn">⬆</div>
+
+<script src="app.js"></script>
+</body>
+</html>
