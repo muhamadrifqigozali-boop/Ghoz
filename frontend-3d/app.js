@@ -1,6 +1,5 @@
 /* ============================================================
-   GHOZ WORLD — ROBLOX 3D STYLE ❤️
-   Dengan transition animasi saat pindah ruangan!
+   GHOZ WORLD v6 — ROOM SWITCH + CINEMA + MUSIC ❤️
    ============================================================ */
 const BACKEND_URL = "https://ghoz-production.up.railway.app";
 const WORLD_LIMIT = 22;
@@ -13,7 +12,7 @@ const tg = window.Telegram?.WebApp;
 if (tg) {
   tg.ready();
   tg.expand();
-  try { tg.setHeaderColor("#0a1628"); tg.setBackgroundColor("#1a2a4a"); } catch (e) {}
+  try { tg.setHeaderColor("#0077b6"); tg.setBackgroundColor("#00b4d8"); } catch (e) {}
 }
 const telegramUser = tg?.initDataUnsafe?.user || {};
 const defaultName = telegramUser.username
@@ -26,7 +25,8 @@ let myColor = "#48cae4";
 let gameStarted = false;
 let currentLocation = "outdoor";
 let nearInteract = null;
-let isTransitioning = false;
+let isSitting = false;
+let sitTarget = null;
 
 // Start screen
 const startScreen = document.getElementById("startScreen");
@@ -49,7 +49,7 @@ document.getElementById("startBtn")?.addEventListener("click", () => {
   myColor = myGender === "girl" ? "#ff85a1" : "#48cae4";
   startScreen.classList.add("hidden");
   document.getElementById("loading")?.classList.remove("hidden");
-  ["hud", "players", "joystick", "joystickLabel", "jumpBtn", "chatToggle"].forEach((id) => {
+  ["hud", "players", "joystick", "joystickLabel", "jumpBtn", "chatToggle", "musicBtn"].forEach((id) => {
     document.getElementById(id)?.classList.remove("hidden");
   });
   document.getElementById("playerName").textContent = myName;
@@ -57,9 +57,86 @@ document.getElementById("startBtn")?.addEventListener("click", () => {
   initGame();
 });
 
+// ========== MUSIC SYSTEM ==========
+const SONGS = [
+  { id: 'lofi1', name: '🎵 Lofi Chill', url: 'https://raw.githubusercontent.com/ghoz/ghoz-world/main/music/lofi1.mp3' },
+  { id: 'lofi2', name: '🎵 Lofi Rain', url: 'https://raw.githubusercontent.com/ghoz/ghoz-world/main/music/lofi2.mp3' },
+  { id: 'pop1', name: '🎵 Pop Happy', url: 'https://raw.githubusercontent.com/ghoz/ghoz-world/main/music/pop1.mp3' },
+  { id: 'edm1', name: '🎵 EDM Vibes', url: 'https://raw.githubusercontent.com/ghoz/ghoz-world/main/music/edm1.mp3' },
+];
+
+let audioContext = null;
+let currentSong = null;
+let isMusicPlaying = false;
+let musicVolume = 0.3;
+
+function initMusic() {
+  const panel = document.getElementById('musicPanel');
+  const list = document.getElementById('songList');
+  SONGS.forEach(song => {
+    const btn = document.createElement('button');
+    btn.className = 'song-btn';
+    btn.textContent = song.name;
+    btn.dataset.songId = song.id;
+    btn.addEventListener('click', () => playSong(song.id));
+    list.appendChild(btn);
+  });
+
+  document.getElementById('musicBtn').addEventListener('click', () => {
+    panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+  });
+
+  // Auto-play first song after interaction
+  document.addEventListener('click', () => {
+    if (!currentSong && gameStarted) {
+      playSong('lofi1');
+    }
+  }, { once: true });
+}
+
+function playSong(songId) {
+  const song = SONGS.find(s => s.id === songId);
+  if (!song) return;
+
+  if (audioContext && currentSong) {
+    try { audioContext.close(); } catch(e) {}
+    currentSong = null;
+  }
+
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+  fetch(song.url)
+    .then(res => res.arrayBuffer())
+    .then(buffer => audioContext.decodeAudioData(buffer))
+    .then(decoded => {
+      const source = audioContext.createBufferSource();
+      source.buffer = decoded;
+      const gain = audioContext.createGain();
+      gain.gain.value = musicVolume;
+      source.connect(gain);
+      gain.connect(audioContext.destination);
+      source.loop = true;
+      source.start(0);
+      currentSong = { source, gain, id: songId };
+      isMusicPlaying = true;
+
+      // Update UI
+      document.querySelectorAll('.song-btn').forEach(b => b.classList.toggle('active', b.dataset.songId === songId));
+    })
+    .catch(err => console.warn('Gagal main lagu:', err));
+}
+
+function toggleMusic() {
+  if (!currentSong) { playSong('lofi1'); return; }
+  isMusicPlaying = !isMusicPlaying;
+  if (currentSong.gain) {
+    currentSong.gain.gain.value = isMusicPlaying ? musicVolume : 0;
+  }
+}
+
 // ========== THREE ==========
 let scene, camera, renderer, clock;
-let outdoorGroup, house1Group, house2Group, museumGroup;
+let outdoorGroup, house1Group, house2Group, museumGroup, cinemaGroup;
 let water, waterFountain;
 let myData = null;
 let myMesh = null;
@@ -69,22 +146,24 @@ const otherPlayers = {};
 let socket = null;
 const clouds = [];
 const interactables = [];
+const walls = [];
+const cinemaSeats = [];
 
-// Camera look (drag to look around)
+// Camera look
 let camYaw = 0;
 let camPitch = 0;
 let isLooking = false;
 let lookStartX = 0, lookStartY = 0;
 let lookStartYaw = 0, lookStartPitch = 0;
 
-function mat(color, roughness = 0.7, metalness = 0.1) {
+function mat(color, roughness = 0.75, metalness = 0) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
 
 function initGame() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a2a4a);
-  scene.fog = new THREE.Fog(0x1a2a4a, 40, 85);
+  scene.background = new THREE.Color(0x00b4d8);
+  scene.fog = new THREE.Fog(0x00b4d8, 35, 80);
 
   camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 140);
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -92,41 +171,36 @@ function initGame() {
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
   document.body.appendChild(renderer.domElement);
 
-  // Lebih banyak light biar 3D keliatan
-  scene.add(new THREE.HemisphereLight(0x87ceeb, 0x3a5a3a, 0.7));
-  const sun = new THREE.DirectionalLight(0xffeedd, 1.5);
-  sun.position.set(25, 35, 18);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x6aab6a, 0.85));
+  const sun = new THREE.DirectionalLight(0xfff5e0, 1.3);
+  sun.position.set(20, 30, 14);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -40;
-  sun.shadow.camera.right = 40;
-  sun.shadow.camera.top = 40;
-  sun.shadow.camera.bottom = -40;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.left = -35;
+  sun.shadow.camera.right = 35;
+  sun.shadow.camera.top = 35;
+  sun.shadow.camera.bottom = -35;
   sun.shadow.bias = -0.001;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x4488ff, 0.3);
-  fill.position.set(-20, 10, -20);
-  scene.add(fill);
-  const rim = new THREE.DirectionalLight(0xff8844, 0.2);
-  rim.position.set(-10, 20, -30);
-  scene.add(rim);
+  scene.add(new THREE.DirectionalLight(0xa0c8ff, 0.3));
 
   outdoorGroup = new THREE.Group(); scene.add(outdoorGroup);
   house1Group = new THREE.Group(); house1Group.visible = false; scene.add(house1Group);
   house2Group = new THREE.Group(); house2Group.visible = false; scene.add(house2Group);
   museumGroup = new THREE.Group(); museumGroup.visible = false; scene.add(museumGroup);
+  cinemaGroup = new THREE.Group(); cinemaGroup.visible = false; scene.add(cinemaGroup);
 
   buildOutdoor();
   buildHouse1();
   buildHouse2();
   buildMuseum();
+  buildCinema();
   setupControls();
   setupNetwork();
   setupLookControls();
+  initMusic();
 
   myData = { x: 0, z: 6, y: 0, name: myName, gender: myGender, color: myColor };
   myMesh = createPlayerMesh(myData, true);
@@ -137,307 +211,412 @@ function initGame() {
   animate();
 }
 
-// ==================== BUILD WORLD ====================
-function buildOutdoor() {
-  const g = outdoorGroup;
+// ========== BUILD CINEMA ==========
+function buildCinema() {
+  const g = cinemaGroup;
   
-  // Ground dengan texture lebih halus
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(52, 52), mat(0x4a8c4a, 0.9, 0));
-  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; g.add(ground);
+  // Floor
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 16), mat(0x2c2c2c));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; g.add(floor);
 
-  // Rumput 3D
-  for (let i = 0; i < 60; i++) {
-    const blade = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.04, 0.1 + Math.random() * 0.15, 4),
-      mat(Math.random() > 0.5 ? 0x3d8c3d : 0x5ca85c)
-    );
-    blade.position.set((Math.random() - 0.5) * 44, 0.05, (Math.random() - 0.5) * 44);
-    blade.rotation.set(
-      (Math.random() - 0.5) * 0.3,
-      Math.random() * Math.PI * 2,
-      (Math.random() - 0.5) * 0.3
-    );
-    g.add(blade);
+  // Walls
+  const wallMat = mat(0x1a1a2e);
+  [[0,3.5,-8,20,7,0.4],[0,3.5,8,20,7,0.4],[-10,3.5,0,0.4,7,16],[10,3.5,0,0.4,7,16]].forEach(([x,y,z,w,h,d]) => {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
+    wall.position.set(x,y,z); g.add(wall);
+    // Add to walls for collision
+    walls.push({ x: x, z: z, w: w, d: d });
+  });
+
+  // Screen
+  const screenMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x444444, emissiveIntensity: 0.3 });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(10, 5.6), screenMat);
+  screen.position.set(0, 3.2, -7.8); g.add(screen);
+  
+  // Screen frame
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(10.6, 6.2, 0.2), mat(0x8d6e63));
+  frame.position.set(0, 3.2, -7.9); g.add(frame);
+
+  // Seats (3 rows x 4 columns)
+  const seatPositions = [];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 4; col++) {
+      const x = -3.5 + col * 2.4;
+      const z = -3 + row * 2.5;
+      seatPositions.push({ x, z });
+    }
   }
 
-  const roadMat = mat(0x555555, 0.8);
-  const r1 = new THREE.Mesh(new THREE.PlaneGeometry(7, 44), roadMat);
-  r1.rotation.x = -Math.PI / 2; r1.position.y = 0.015; r1.receiveShadow = true; g.add(r1);
-  const r2 = new THREE.Mesh(new THREE.PlaneGeometry(44, 5.5), roadMat);
-  r2.rotation.x = -Math.PI / 2; r2.position.y = 0.016; r2.receiveShadow = true; g.add(r2);
+  seatPositions.forEach((pos, i) => {
+    const seatGroup = new THREE.Group();
+    
+    // Seat base
+    const seatBase = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.3, 0.9), mat(0x8d6e63));
+    seatBase.position.y = 0.15; seatGroup.add(seatBase);
+    
+    // Seat back
+    const seatBack = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.1), mat(0x6d4c41));
+    seatBack.position.set(0, 0.55, -0.4); seatGroup.add(seatBack);
+    
+    // Seat cushion
+    const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.7), mat(0x9e9e9e));
+    cushion.position.y = 0.4; seatGroup.add(cushion);
+    
+    seatGroup.position.set(pos.x, 0, pos.z);
+    g.add(seatGroup);
+    
+    // Store for sitting interaction
+    cinemaSeats.push({
+      mesh: seatGroup,
+      pos: new THREE.Vector3(pos.x, 0, pos.z),
+      occupied: false
+    });
+  });
 
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffd60a });
+  // Exit door
+  const exitDoor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.2), mat(0x5d4037));
+  exitDoor.position.set(0, 1.2, 7.8); g.add(exitDoor);
+
+  // Interact: exit
+  interactables.push({
+    type: "exit", id: "exit-cinema", label: "🚪 Keluar Bioskop",
+    pos: new THREE.Vector3(0, 0, 6.5), radius: 2.8, location: "cinema",
+    onEnter: () => enterLocation("outdoor")
+  });
+
+  // Interact: seats (sit down)
+  cinemaSeats.forEach((seat, idx) => {
+    interactables.push({
+      type: "seat", id: `seat-${idx}`, label: "💺 Duduk",
+      pos: seat.pos.clone(),
+      radius: 1.5, location: "cinema",
+      onEnter: () => sitOnSeat(idx)
+    });
+  });
+}
+
+function sitOnSeat(idx) {
+  const seat = cinemaSeats[idx];
+  if (!seat) return;
+  if (seat.occupied) {
+    showBubble(myMesh, "Kursi ini sudah ditempati 😅");
+    return;
+  }
+  isSitting = true;
+  sitTarget = seat.pos.clone();
+  seat.occupied = true;
+  myData.x = seat.pos.x;
+  myData.z = seat.pos.z + 0.5;
+  myData.y = 0.3;
+  showBubble(myMesh, "🎬 Menikmati film...");
+  
+  // Play video from GitHub
+  playCinemaVideo();
+}
+
+let cinemaVideo = null;
+
+function playCinemaVideo() {
+  if (cinemaVideo) {
+    cinemaVideo.remove();
+    cinemaVideo = null;
+  }
+  
+  // Create video element
+  const video = document.createElement('video');
+  video.src = 'https://raw.githubusercontent.com/ghoz/ghoz-world/main/video/sample.mp4'; // Ganti dengan video real
+  video.crossOrigin = 'anonymous';
+  video.loop = true;
+  video.muted = false;
+  video.volume = 0.5;
+  video.autoplay = true;
+  
+  // Create texture from video
+  const texture = new THREE.VideoTexture(video);
+  const videoMat = new THREE.MeshStandardMaterial({ 
+    map: texture,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.5
+  });
+  
+  // Find screen in cinema
+  cinemaGroup.children.forEach(child => {
+    if (child.isMesh && child.geometry.type === 'PlaneGeometry' && child.position.z < -7) {
+      cinemaVideo = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 5.2), videoMat);
+      cinemaVideo.position.copy(child.position);
+      cinemaVideo.position.z += 0.01;
+      cinemaGroup.add(cinemaVideo);
+    }
+  });
+  
+  video.play().catch(e => console.warn('Video auto-play blocked:', e));
+  
+  // Auto stop after 10s (demo)
+  setTimeout(() => {
+    if (video) video.pause();
+    if (cinemaVideo) {
+      cinemaGroup.remove(cinemaVideo);
+      cinemaVideo = null;
+    }
+    if (sitTarget) {
+      isSitting = false;
+      const seat = cinemaSeats.find(s => s.pos.distanceTo(sitTarget) < 0.5);
+      if (seat) seat.occupied = false;
+      sitTarget = null;
+      showBubble(myMesh, "Film selesai! 🎬");
+    }
+  }, 15000);
+}
+
+// ========== BUILD WORLD ==========
+function buildOutdoor() {
+  const g = outdoorGroup;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(50, 50), mat(0x5cb85c, 0.92));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; g.add(ground);
+
+  for (let i = 0; i < 24; i++) {
+    const p = new THREE.Mesh(new THREE.CircleGeometry(1.2 + Math.random() * 1.8, 10), mat(0x4cae4c, 0.95));
+    p.rotation.x = -Math.PI / 2;
+    p.position.set((Math.random() - 0.5) * 40, 0.01, (Math.random() - 0.5) * 40);
+    g.add(p);
+  }
+
+  const roadMat = mat(0x6b6b6b, 0.85);
+  const r1 = new THREE.Mesh(new THREE.PlaneGeometry(7, 42), roadMat);
+  r1.rotation.x = -Math.PI / 2; r1.position.y = 0.015; g.add(r1);
+  const r2 = new THREE.Mesh(new THREE.PlaneGeometry(42, 5.5), roadMat);
+  r2.rotation.x = -Math.PI / 2; r2.position.y = 0.016; g.add(r2);
+
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
   for (let z = -19; z <= 19; z += 2.3) {
     const l = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 1.1), lineMat);
     l.rotation.x = -Math.PI / 2; l.position.set(0, 0.03, z); g.add(l);
   }
 
-  // Water dengan reflection
   water = new THREE.Mesh(new THREE.CircleGeometry(4.5, 40),
-    new THREE.MeshStandardMaterial({ color: 0x2196f3, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.85 }));
-  water.rotation.x = -Math.PI / 2; water.position.set(-12, 0.04, -11); water.receiveShadow = true; g.add(water);
+    new THREE.MeshStandardMaterial({ color: 0x3498db, roughness: 0.15, metalness: 0.25, transparent: true, opacity: 0.88 }));
+  water.rotation.x = -Math.PI / 2; water.position.set(-12, 0.04, -11); g.add(water);
 
   function tree(x, z, s = 1) {
     const t = new THREE.Group();
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 2.0, 10), mat(0x6d4c2a));
-    trunk.position.y = 1.0; trunk.castShadow = true; t.add(trunk);
-    const leafMat = mat(0x2e7d32);
-    const leafMat2 = mat(0x388e3c);
-    const leafMat3 = mat(0x43a047);
-    const l1 = new THREE.Mesh(new THREE.SphereGeometry(1.0, 8, 8), leafMat);
-    l1.position.set(0, 2.2, 0); l1.scale.set(1.2, 0.8, 1.2); l1.castShadow = true; t.add(l1);
-    const l2 = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 8), leafMat2);
-    l2.position.set(0.6, 2.8, 0.4); l2.scale.set(1.1, 0.7, 1.1); l2.castShadow = true; t.add(l2);
-    const l3 = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 8), leafMat3);
-    l3.position.set(-0.5, 2.7, -0.5); l3.scale.set(1.1, 0.7, 1.1); l3.castShadow = true; t.add(l3);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 2.1, 8), mat(0x8b5a2b));
+    trunk.position.y = 1.05; trunk.castShadow = true; t.add(trunk);
+    [[2.6, 1.35, 2, 0x27ae60], [3.55, 1.05, 1.6, 0x2ecc71], [4.3, 0.7, 1.2, 0x58d68d]].forEach(([y, r, h, c]) => {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), mat(c));
+      cone.position.y = y; cone.castShadow = true; t.add(cone);
+    });
     t.position.set(x, 0, z); t.scale.setScalar(s); g.add(t);
   }
-  [[-16,-16,1.2],[-18,-10,1.1],[-15,12,1.2],[16,-16,1.2],[18,-10,1.1],[15,12,1.1],
-   [-9,18,1.0],[9,18,1.0],[-10,-18,1.0],[10,-18,1.0],[-18,4,0.9],[18,4,1.0]].forEach(t => tree(...t));
+  [[-16,-16,1.1],[-18,-10,1],[-15,12,1.1],[16,-16,1.1],[18,-10,1],[15,12,1],
+   [-9,18,0.9],[9,18,0.9],[-10,-18,0.9],[10,-18,0.9],[-18,4,0.85],[18,4,0.9]].forEach(t => tree(...t));
 
-  createHouseExterior(-13, 8, 0xf5cba7, 0xbf360c, "house1", g);
-  createHouseExterior(13, 8, 0xf8bbd0, 0x6a1b9a, "house2", g);
+  createHouseExterior(-13, 8, 0xf5cba7, 0xc0392b, "house1", g);
+  createHouseExterior(13, 8, 0xf5b7b1, 0x8e44ad, "house2", g);
   createMuseumExterior(0, -16, g);
+  createCinemaExterior(0, 16, g);
 
-  // Plaza dengan detail
-  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 0.2, 32), mat(0xd5d8dc, 0.6));
-  plaza.position.set(0, 0.1, 0); plaza.receiveShadow = true; g.add(plaza);
-  
-  const fBase = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.8, 16), mat(0xbdc3c7, 0.5));
-  fBase.position.y = 0.5; fBase.castShadow = true; g.add(fBase);
-  
-  waterFountain = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.15, 24),
-    new THREE.MeshStandardMaterial({ color: 0x42a5f5, transparent: true, opacity: 0.8, roughness: 0.1, metalness: 0.3 }));
-  waterFountain.position.y = 0.9; g.add(waterFountain);
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 0.18, 28), mat(0xd5d8dc));
+  plaza.position.set(0, 0.09, 0); plaza.receiveShadow = true; g.add(plaza);
+  const fBase = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 0.7, 16), mat(0xbdc3c7));
+  fBase.position.y = 0.45; g.add(fBase);
+  waterFountain = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.12, 20),
+    new THREE.MeshStandardMaterial({ color: 0x3498db, transparent: true, opacity: 0.85 }));
+  waterFountain.position.y = 0.85; g.add(waterFountain);
 
-  // Lampu jalan 3D
-  function lamp(x, z) {
-    const l = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 3.5, 8), mat(0x37474f, 0.3, 0.5));
-    pole.position.y = 1.75; pole.castShadow = true; l.add(pole);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.4), mat(0x37474f, 0.3, 0.5));
-    arm.position.y = 3.5; l.add(arm);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), 
-      new THREE.MeshBasicMaterial({ color: 0xffd60a }));
-    bulb.position.y = 3.55; l.add(bulb);
-    const glow = new THREE.PointLight(0xffd60a, 0.3, 6);
-    glow.position.y = 3.5; l.add(glow);
-    l.position.set(x, 0, z); g.add(l);
-  }
-  [[-5,-6],[5,-6],[-5,6],[5,6],[-5,0],[5,0]].forEach(p => lamp(...p));
-
-  // Bangku 3D
   function bench(x, z, rot = 0) {
     const b = new THREE.Group();
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.5), mat(0x6d4c2a, 0.6));
-    seat.position.y = 0.45; seat.castShadow = true; b.add(seat);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.08), mat(0x6d4c2a, 0.6));
-    back.position.set(0, 0.75, -0.22); b.add(back);
-    const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), mat(0x4e342e));
-    leg1.position.set(-0.7, 0.2, 0.15); b.add(leg1);
-    const leg2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), mat(0x4e342e));
-    leg2.position.set(0.7, 0.2, 0.15); b.add(leg2);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 0.5), mat(0x8b5a2b));
+    seat.position.y = 0.45; b.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 0.1), mat(0x8b5a2b));
+    back.position.set(0, 0.75, -0.2); b.add(back);
     b.position.set(x, 0, z); b.rotation.y = rot; g.add(b);
   }
   bench(-4.5, 4.5, Math.PI / 4); bench(4.5, 4.5, -Math.PI / 4);
   bench(-4.5, -4.5, 3 * Math.PI / 4); bench(4.5, -4.5, -3 * Math.PI / 4);
 
-  // Pagar/border
+  function lamp(x, z) {
+    const l = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 3, 8), mat(0x2c3e50));
+    pole.position.y = 1.5; l.add(pole);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffeaa7 }));
+    bulb.position.y = 3.15; l.add(bulb);
+    l.position.set(x, 0, z); g.add(l);
+  }
+  [[-5,-6],[5,-6],[-5,6],[5,6],[-5,0],[5,0]].forEach(p => lamp(...p));
+
   [[0,-22.5,46,0.7],[0,22.5,46,0.7],[-22.5,0,0.7,46],[22.5,0,0.7,46]].forEach(([x,z,w,d]) => {
-    const o = new THREE.Mesh(new THREE.BoxGeometry(w, 1.0, d), mat(0x1b5e20, 0.8));
-    o.position.set(x, 0.5, z); o.castShadow = true; g.add(o);
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w, 0.95, d), mat(0x2d6a4f));
+    o.position.set(x, 0.48, z); g.add(o);
   });
 
-  // Awan 3D
   function cloud(x, y, z, s = 1) {
     const c = new THREE.Group();
-    const cm = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, roughness: 0.1 });
-    const p1 = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 8), cm);
-    p1.position.set(0, 0, 0); p1.scale.set(1.2, 0.6, 0.8); c.add(p1);
-    const p2 = new THREE.Mesh(new THREE.SphereGeometry(1.0, 8, 8), cm);
-    p2.position.set(1.3, 0.2, 0.3); p2.scale.set(1.1, 0.6, 0.8); c.add(p2);
-    const p3 = new THREE.Mesh(new THREE.SphereGeometry(1.0, 8, 8), cm);
-    p3.position.set(-1.2, 0.1, -0.2); p3.scale.set(1.1, 0.6, 0.8); c.add(p3);
+    const cm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82 });
+    [[0,0,0],[1.2,0.15,0.3],[-1.1,0.1,-0.2]].forEach(([cx,cy,cz]) => {
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 8), cm);
+      p.position.set(cx, cy, cz); c.add(p);
+    });
     c.position.set(x, y, z); c.scale.setScalar(s); g.add(c); clouds.push(c);
   }
-  cloud(-20, 16, -12, 1.6); cloud(16, 17, 8, 1.8); cloud(4, 15, -18, 1.4);
+  cloud(-20, 16, -12, 1.5); cloud(16, 17, 8, 1.6); cloud(4, 15, -18, 1.3);
 }
 
 function createHouseExterior(x, z, color, roofColor, id, parent) {
   const house = new THREE.Group();
-  // Dinding dengan texture halus
-  const body = new THREE.Mesh(new THREE.BoxGeometry(4.4, 3.0, 4.2), mat(color, 0.6));
-  body.position.y = 1.5; body.castShadow = true; body.receiveShadow = true; house.add(body);
-  
-  // Atap dengan detail
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.5, 2.0, 4), mat(roofColor, 0.5));
-  roof.rotation.y = Math.PI / 4; roof.position.y = 3.8; roof.castShadow = true; house.add(roof);
-  
-  // Cerobong asap
-  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.3), mat(0x795548));
-  chimney.position.set(1.2, 4.0, 1.2); house.add(chimney);
-  
-  // Pintu dengan gagang 3D
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.7, 0.12), mat(0x4e342e, 0.5));
-  door.position.set(0, 0.85, 2.15); house.add(door);
-  const handle = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), mat(0xffd60a, 0.2, 0.8));
-  handle.position.set(0.3, 0.85, 2.2); house.add(handle);
-  
-  // Jendela
+  const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 4), mat(color));
+  body.position.y = 1.4; body.castShadow = true; house.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.3, 1.9, 4), mat(roofColor));
+  roof.rotation.y = Math.PI / 4; roof.position.y = 3.55; house.add(roof);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.6, 0.12), mat(0x4e342e));
+  door.position.set(0, 0.8, 2.05); house.add(door);
   [-1.2, 1.2].forEach(wx => {
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.06), mat(0xecf0f1, 0.3));
-    frame.position.set(wx, 1.7, 2.1); house.add(frame);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.04),
-      new THREE.MeshStandardMaterial({ color: 0x87ceeb, transparent: true, opacity: 0.4, roughness: 0.05, metalness: 0.1 }));
-    glass.position.set(wx, 1.7, 2.13); house.add(glass);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.08), mat(0xecf0f1));
+    frame.position.set(wx, 1.6, 2.05); house.add(frame);
   });
-  
   house.position.set(x, 0, z); parent.add(house);
+
+  // Add collision walls
+  const halfW = 2.1, halfD = 2.0;
+  walls.push(
+    { x: x, z: z + halfD, w: 4.2, d: 0.4 },
+    { x: x, z: z - halfD, w: 4.2, d: 0.4 },
+    { x: x + halfW, z: z, w: 0.4, d: 4.0 },
+    { x: x - halfW, z: z, w: 0.4, d: 4.0 }
+  );
 
   interactables.push({
     type: "house", id, label: "🚪 Masuk Rumah",
     pos: new THREE.Vector3(x, 0, z + 2.5),
-    radius: 3.5,
+    radius: 3.0,
     location: "outdoor",
-    onEnter: () => enterLocationWithTransition(id)
+    onEnter: () => enterLocation(id)
   });
 }
 
 function createMuseumExterior(x, z, parent) {
   const m = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(8.5, 4.5, 6.5), mat(0xecf0f1, 0.5));
-  body.position.y = 2.25; body.castShadow = true; body.receiveShadow = true; m.add(body);
-  
-  // Kolom
-  [-3.4, -1.2, 1.2, 3.4].forEach(cx => {
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 4.2, 12), mat(0xbdc3c7, 0.3, 0.2));
-    col.position.set(cx, 2.1, 3.25); col.castShadow = true; m.add(col);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(8, 4.2, 6), mat(0xecf0f1));
+  body.position.y = 2.1; body.castShadow = true; m.add(body);
+  [-3.2, -1.1, 1.1, 3.2].forEach(cx => {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 4, 10), mat(0xbdc3c7));
+    col.position.set(cx, 2, 3.15); m.add(col);
   });
-  
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(9.0, 0.4, 7.0), mat(0x2c3e50, 0.3, 0.2));
-  roof.position.y = 4.6; roof.castShadow = true; m.add(roof);
-  
-  // Pintu museum
-  const door = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.6, 0.15), mat(0x4e342e));
-  door.position.set(0, 1.3, 3.25); m.add(door);
-  
-  // Lampu gantung
-  const chandelier = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xffd60a, emissive: 0xffd60a, emissiveIntensity: 0.2 }));
-  chandelier.position.set(0, 4.2, 0); m.add(chandelier);
-  
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.4, 6.6), mat(0x2c3e50));
+  roof.position.y = 4.4; m.add(roof);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.15), mat(0x5d4037));
+  door.position.set(0, 1.2, 3.1); m.add(door);
   m.position.set(x, 0, z); parent.add(m);
+
+  // Add collision
+  walls.push(
+    { x: x, z: z + 3.2, w: 8.4, d: 0.4 },
+    { x: x, z: z - 3.2, w: 8.4, d: 0.4 },
+    { x: x + 4.2, z: z, w: 0.4, d: 6.4 },
+    { x: x - 4.2, z: z, w: 0.4, d: 6.4 }
+  );
 
   interactables.push({
     type: "museum", id: "museum", label: "🔐 Masuk Museum",
     pos: new THREE.Vector3(x, 0, z + 4),
-    radius: 4.0,
+    radius: 3.5,
     location: "outdoor",
     onEnter: () => showPasswordModal()
   });
 }
 
+function createCinemaExterior(x, z, parent) {
+  const c = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(8, 3.5, 5), mat(0x2c2c2c));
+  body.position.y = 1.75; body.castShadow = true; c.add(body);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 0.1), mat(0xffd60a));
+  sign.position.set(0, 3.8, 2.6); c.add(sign);
+  const signText = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.3, 0.15), mat(0x1a1a2e));
+  signText.position.set(0, 3.8, 2.65); c.add(signText);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 0.15), mat(0x5d4037));
+  door.position.set(0, 1.1, 2.6); c.add(door);
+  c.position.set(x, 0, z); parent.add(c);
+
+  // Add collision
+  walls.push(
+    { x: x, z: z + 2.7, w: 8.4, d: 0.4 },
+    { x: x, z: z - 2.7, w: 8.4, d: 0.4 },
+    { x: x + 4.2, z: z, w: 0.4, d: 5.4 },
+    { x: x - 4.2, z: z, w: 0.4, d: 5.4 }
+  );
+
+  interactables.push({
+    type: "cinema", id: "cinema", label: "🎬 Masuk Bioskop",
+    pos: new THREE.Vector3(x, 0, z + 2.8),
+    radius: 3.0,
+    location: "outdoor",
+    onEnter: () => enterLocation("cinema")
+  });
+}
+
 function buildHouse1() {
   const g = house1Group;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), mat(0xd7ccc8, 0.7));
-  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; floor.receiveShadow = true; g.add(floor);
-  
-  const wallMat = mat(0xfff3e0, 0.6);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), mat(0xd7ccc8));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; g.add(floor);
+  const wallMat = mat(0xfff3e0);
   [[0,2,-5,10,4,0.3],[0,2,5,10,4,0.3],[-5,2,0,0.3,4,10],[5,2,0,0.3,4,10]].forEach(([x,y,z,w,h,d]) => {
     const wll = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
-    wll.position.set(x,y,z); wll.castShadow = true; g.add(wll);
+    wll.position.set(x,y,z); g.add(wll);
+    walls.push({ x: x, z: z, w: w, d: d });
   });
-  
-  const pl = new THREE.PointLight(0xffe0b2, 1.2, 14); pl.position.set(0, 3.8, 0); g.add(pl);
-  
-  // Sofa 3D
-  const sofa = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 1.2), mat(0xe57373, 0.5));
-  sofa.position.set(0, 0.35, -2.5); sofa.castShadow = true; g.add(sofa);
-  const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.5, 0.2), mat(0xc62828, 0.5));
-  sofaBack.position.set(0, 0.9, -3.0); sofaBack.castShadow = true; g.add(sofaBack);
-  
-  // Meja
-  const table = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1), mat(0x8d6e63, 0.4));
-  table.position.set(0, 0.55, 0.5); table.castShadow = true; g.add(table);
-  const tLegs = [[-0.65,-0.35],[-0.65,0.35],[0.65,-0.35],[0.65,0.35]];
-  tLegs.forEach(([lx,lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.4, 6), mat(0x6d4c2a));
-    leg.position.set(lx, 0.25, lz); g.add(leg);
-  });
-  
-  // Lampu gantung
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xffd60a, emissive: 0xffd60a, emissiveIntensity: 0.15 }));
-  lamp.position.set(0, 3.5, 0); g.add(lamp);
-  
-  // Pintu keluar
-  const exit = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.15), mat(0x4e342e));
+  const pl = new THREE.PointLight(0xffe0b2, 1.2, 14); pl.position.set(0, 3.5, 0); g.add(pl);
+  const sofa = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.7, 1.2), mat(0xe57373));
+  sofa.position.set(0, 0.4, -2.5); g.add(sofa);
+  const table = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 1), mat(0x8d6e63));
+  table.position.set(0, 0.55, 0.5); g.add(table);
+  const exit = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.15), mat(0x5d4037));
   exit.position.set(0, 1.1, 4.9); g.add(exit);
 
   interactables.push({
     type: "exit", id: "exit-house1", label: "🚪 Keluar Rumah",
     pos: new THREE.Vector3(0, 0, 4.2), radius: 2.5, location: "house1",
-    onEnter: () => enterLocationWithTransition("outdoor")
+    onEnter: () => enterLocation("outdoor")
   });
 }
 
 function buildHouse2() {
   const g = house2Group;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), mat(0xe1bee7, 0.7));
-  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; floor.receiveShadow = true; g.add(floor);
-  
-  const wallMat = mat(0xf3e5f5, 0.6);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), mat(0xe1bee7));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; g.add(floor);
+  const wallMat = mat(0xf3e5f5);
   [[0,2,-5,10,4,0.3],[0,2,5,10,4,0.3],[-5,2,0,0.3,4,10],[5,2,0,0.3,4,10]].forEach(([x,y,z,w,h,d]) => {
     const wll = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
-    wll.position.set(x,y,z); wll.castShadow = true; g.add(wll);
+    wll.position.set(x,y,z); g.add(wll);
+    walls.push({ x: x, z: z, w: w, d: d });
   });
-  
-  const pl = new THREE.PointLight(0xf8bbd0, 1.2, 14); pl.position.set(0, 3.8, 0); g.add(pl);
-  
-  // Kasur 3D
-  const bed = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.4, 3.0), mat(0xce93d8, 0.5));
-  bed.position.set(-2, 0.25, -1); bed.castShadow = true; g.add(bed);
-  const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.4), mat(0xfff, 0.5));
-  pillow.position.set(-1.4, 0.5, -1.2); g.add(pillow);
-  const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.05, 1.4), mat(0xab47bc, 0.6));
-  blanket.position.set(-2.2, 0.5, 0.2); g.add(blanket);
-  
-  // Meja rias
-  const vanity = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.6, 0.5), mat(0x8d6e63, 0.4));
-  vanity.position.set(2.2, 0.35, -1.5); g.add(vanity);
-  const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.04),
-    new THREE.MeshStandardMaterial({ color: 0x87ceeb, roughness: 0.05, metalness: 0.3 }));
-  mirror.position.set(2.2, 0.8, -1.7); g.add(mirror);
-  
-  const exit = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.15), mat(0x4e342e));
+  const pl = new THREE.PointLight(0xf8bbd0, 1.2, 14); pl.position.set(0, 3.5, 0); g.add(pl);
+  const bed = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 3), mat(0xce93d8));
+  bed.position.set(-2, 0.35, -1); g.add(bed);
+  const exit = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.15), mat(0x5d4037));
   exit.position.set(0, 1.1, 4.9); g.add(exit);
 
   interactables.push({
     type: "exit", id: "exit-house2", label: "🚪 Keluar Rumah",
     pos: new THREE.Vector3(0, 0, 4.2), radius: 2.5, location: "house2",
-    onEnter: () => enterLocationWithTransition("outdoor")
+    onEnter: () => enterLocation("outdoor")
   });
 }
 
 function buildMuseum() {
   const g = museumGroup;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 14), mat(0x263238, 0.5, 0.2));
-  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; floor.receiveShadow = true; g.add(floor);
-  
-  const wallMat = mat(0x37474f, 0.4);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 14), mat(0x263238, 0.6, 0.2));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; g.add(floor);
+  const wallMat = mat(0x37474f);
   [[0,2.5,-7,16,5,0.4],[0,2.5,7,16,5,0.4],[-8,2.5,0,0.4,5,14],[8,2.5,0,0.4,5,14]].forEach(([x,y,z,w,h,d]) => {
     const wll = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
-    wll.position.set(x,y,z); wll.castShadow = true; g.add(wll);
+    wll.position.set(x,y,z); g.add(wll);
+    walls.push({ x: x, z: z, w: w, d: d });
   });
-  
-  const pl1 = new THREE.PointLight(0xff80ab, 0.9, 16); pl1.position.set(-4, 4.5, 0); g.add(pl1);
-  const pl2 = new THREE.PointLight(0x80d8ff, 0.7, 14); pl2.position.set(4, 4.5, 0); g.add(pl2);
-  const pl3 = new THREE.PointLight(0xffecb3, 1.0, 12); pl3.position.set(0, 4.5, -3); g.add(pl3);
+  const pl1 = new THREE.PointLight(0xff80ab, 0.9, 16); pl1.position.set(-4, 4, 0); g.add(pl1);
+  const pl2 = new THREE.PointLight(0x80d8ff, 0.7, 14); pl2.position.set(4, 4, 0); g.add(pl2);
+  const pl3 = new THREE.PointLight(0xffecb3, 1.0, 12); pl3.position.set(0, 4.2, -3); g.add(pl3);
 
-  // Frame foto besar
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(7.4, 4.8, 0.25), mat(0xf1c40f, 0.3, 0.3));
-  frame.position.set(0, 2.5, -6.7); frame.castShadow = true; g.add(frame);
-  
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(7.2, 4.6, 0.25), mat(0xf1c40f, 0.4, 0.3));
+  frame.position.set(0, 2.5, -6.6); g.add(frame);
   const photoCanvas = document.createElement("canvas");
   photoCanvas.width = 1024; photoCanvas.height = 640;
   const pctx = photoCanvas.getContext("2d");
@@ -445,146 +624,136 @@ function buildMuseum() {
   grd.addColorStop(0, "#ff9a9e"); grd.addColorStop(0.5, "#fecfef"); grd.addColorStop(1, "#a18cd1");
   pctx.fillStyle = grd; pctx.fillRect(0, 0, 1024, 640);
   pctx.fillStyle = "rgba(255,255,255,0.3)";
-  for (let i = 0; i < 20; i++) {
-    pctx.font = `${30 + Math.random() * 50}px Arial`;
-    pctx.fillText("♥", 50 + Math.random() * 920, 40 + Math.random() * 560);
+  for (let i = 0; i < 15; i++) {
+    pctx.font = `${28 + Math.random() * 40}px Arial`;
+    pctx.fillText("♥", 60 + Math.random() * 900, 50 + Math.random() * 540);
   }
-  pctx.fillStyle = "#fff"; pctx.font = "bold 60px Arial"; pctx.textAlign = "center";
-  pctx.fillText("Foto Pacar ❤️", 512, 270);
-  pctx.font = "26px Arial"; pctx.fillText("Tempat kenangan kita berdua", 512, 350);
-  const photo = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 4.1),
+  pctx.fillStyle = "#fff"; pctx.font = "bold 64px Arial"; pctx.textAlign = "center";
+  pctx.fillText("Foto Pacar ❤️", 512, 280);
+  pctx.font = "28px Arial"; pctx.fillText("Tempat kenangan kita berdua", 512, 360);
+  const photo = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.9),
     new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(photoCanvas) }));
-  photo.position.set(0, 2.5, -6.55); g.add(photo);
+  photo.position.set(0, 2.5, -6.45); g.add(photo);
 
-  // Patung hati 3D
-  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 0.9, 16), mat(0xb0bec5, 0.3, 0.2));
-  ped.position.set(0, 0.45, 0); ped.castShadow = true; g.add(ped);
-  
-  const heartMat = new THREE.MeshStandardMaterial({ color: 0xff1744, emissive: 0x880011, emissiveIntensity: 0.2, roughness: 0.2 });
-  const h1 = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), heartMat);
-  h1.position.set(-0.28, 1.4, 0); h1.castShadow = true; g.add(h1);
-  const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), heartMat);
-  h2.position.set(0.28, 1.4, 0); h2.castShadow = true; g.add(h2);
-  
-  const exitDoor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.2), mat(0x4e342e));
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 0.9, 16), mat(0xb0bec5));
+  ped.position.set(0, 0.45, 0); g.add(ped);
+  const heartMat = new THREE.MeshStandardMaterial({ color: 0xff1744, emissive: 0x660011, emissiveIntensity: 0.3 });
+  const h1 = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 10), heartMat);
+  h1.position.set(-0.25, 1.3, 0); g.add(h1);
+  const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 10), heartMat);
+  h2.position.set(0.25, 1.3, 0); g.add(h2);
+
+  const exitDoor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.2), mat(0x5d4037));
   exitDoor.position.set(0, 1.2, 6.8); g.add(exitDoor);
 
   interactables.push({
     type: "exit", id: "exit-museum", label: "🚪 Keluar Museum",
     pos: new THREE.Vector3(0, 0, 6.0), radius: 2.8, location: "museum",
-    onEnter: () => enterLocationWithTransition("outdoor")
+    onEnter: () => enterLocation("outdoor")
   });
 }
 
-// ==================== TRANSITION SYSTEM (Seperti Roblox) ====================
-function enterLocationWithTransition(loc) {
-  if (isTransitioning) return;
-  isTransitioning = true;
-  
-  const overlay = document.getElementById("transitionOverlay");
-  const text = document.getElementById("transitionText");
-  
-  // Set text tujuan
-  const names = {
-    "house1": "🏠 Rumah Hangout",
-    "house2": "🏠 Rumah Pink",
-    "museum": "🏛️ Museum Cinta",
-    "outdoor": "🌳 Outdoor"
-  };
-  text.textContent = names[loc] || "✦ Loading ✦";
-  
-  // Tampilkan overlay (fade in)
-  overlay.style.display = "flex";
-  overlay.style.opacity = "0";
-  requestAnimationFrame(() => {
-    overlay.style.opacity = "1";
-  });
-  
-  // Tunggu 0.8 detik, lalu pindah lokasi
-  setTimeout(() => {
-    // Pindah lokasi
-    outdoorGroup.visible = false;
-    house1Group.visible = false;
-    house2Group.visible = false;
-    museumGroup.visible = false;
-
-    if (loc === "outdoor") {
-      outdoorGroup.visible = true;
-      scene.background = new THREE.Color(0x1a2a4a);
-      scene.fog = new THREE.Fog(0x1a2a4a, 40, 85);
-      if (myData) { myData.x = 0; myData.z = 8; myData.y = 0; }
-      document.getElementById("locationBadge").textContent = "📍 Outdoor";
-    } else if (loc === "house1") {
-      house1Group.visible = true;
-      scene.background = new THREE.Color(0xfff3e0);
-      scene.fog = null;
-      if (myData) { myData.x = 0; myData.z = 2.5; myData.y = 0; }
-      document.getElementById("locationBadge").textContent = "🏠 Rumah Hangout";
-    } else if (loc === "house2") {
-      house2Group.visible = true;
-      scene.background = new THREE.Color(0xf3e5f5);
-      scene.fog = null;
-      if (myData) { myData.x = 0; myData.z = 2.5; myData.y = 0; }
-      document.getElementById("locationBadge").textContent = "🏠 Rumah Pink";
-    } else if (loc === "museum") {
-      museumGroup.visible = true;
-      scene.background = new THREE.Color(0x0a1628);
-      scene.fog = null;
-      if (myData) { myData.x = 0; myData.z = 3.5; myData.y = 0; }
-      document.getElementById("locationBadge").textContent = "🏛️ Museum Cinta";
-    }
-    currentLocation = loc;
-    document.getElementById("locationBadge").style.display = "block";
-    if (myMesh && myData) myMesh.position.set(myData.x, myData.y || 0, myData.z);
-    nearInteract = null;
-    updateInteractUI();
-    
-    // Fade out overlay
-    overlay.style.opacity = "0";
-    setTimeout(() => {
-      overlay.style.display = "none";
-      isTransitioning = false;
-    }, 500);
-  }, 800);
-}
-
-function showPasswordModal() {
-  document.getElementById("passModal").style.display = "flex";
-  document.getElementById("passInput").value = "";
-  setTimeout(() => document.getElementById("passInput")?.focus(), 100);
-}
-document.getElementById("passCancel")?.addEventListener("click", () => {
-  document.getElementById("passModal").style.display = "none";
-});
-document.getElementById("passSubmit")?.addEventListener("click", tryPassword);
-document.getElementById("passInput")?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") tryPassword();
-});
-function tryPassword() {
-  const val = (document.getElementById("passInput")?.value || "").trim().toLowerCase();
-  if (val === MUSEUM_PASSWORD.toLowerCase()) {
-    document.getElementById("passModal").style.display = "none";
-    enterLocationWithTransition("museum");
-  } else {
-    const inp = document.getElementById("passInput");
-    if (inp) { inp.style.borderColor = "#ff1744"; setTimeout(() => inp.style.borderColor = "", 700); }
+function enterLocation(loc) {
+  // Reset sitting state
+  isSitting = false;
+  sitTarget = null;
+  if (cinemaVideo) {
+    cinemaGroup.remove(cinemaVideo);
+    cinemaVideo = null;
   }
+  cinemaSeats.forEach(s => s.occupied = false);
+
+  outdoorGroup.visible = false;
+  house1Group.visible = false;
+  house2Group.visible = false;
+  museumGroup.visible = false;
+  cinemaGroup.visible = false;
+
+  if (loc === "outdoor") {
+    outdoorGroup.visible = true;
+    scene.background = new THREE.Color(0x00b4d8);
+    scene.fog = new THREE.Fog(0x00b4d8, 35, 80);
+    if (myData) { myData.x = 0; myData.z = 8; myData.y = 0; }
+    document.getElementById("locationBadge").textContent = "📍 Outdoor";
+  } else if (loc === "house1") {
+    house1Group.visible = true;
+    scene.background = new THREE.Color(0xfff3e0);
+    scene.fog = null;
+    if (myData) { myData.x = 0; myData.z = 2.5; myData.y = 0; }
+    document.getElementById("locationBadge").textContent = "🏠 Rumah Hangout";
+  } else if (loc === "house2") {
+    house2Group.visible = true;
+    scene.background = new THREE.Color(0xf3e5f5);
+    scene.fog = null;
+    if (myData) { myData.x = 0; myData.z = 2.5; myData.y = 0; }
+    document.getElementById("locationBadge").textContent = "🏠 Rumah Pink";
+  } else if (loc === "museum") {
+    museumGroup.visible = true;
+    scene.background = new THREE.Color(0x1a237e);
+    scene.fog = null;
+    if (myData) { myData.x = 0; myData.z = 3.5; myData.y = 0; }
+    document.getElementById("locationBadge").textContent = "🏛️ Museum Cinta";
+  } else if (loc === "cinema") {
+    cinemaGroup.visible = true;
+    scene.background = new THREE.Color(0x0a0a0a);
+    scene.fog = null;
+    if (myData) { myData.x = 0; myData.z = 3; myData.y = 0; }
+    document.getElementById("locationBadge").textContent = "🎬 Bioskop Ghoz";
+  }
+  currentLocation = loc;
+  document.getElementById("locationBadge").style.display = "block";
+  if (myMesh && myData) myMesh.position.set(myData.x, myData.y || 0, myData.z);
+  nearInteract = null;
+  updateInteractUI();
 }
 
-// ==================== PLAYER ====================
+// ========== COLLISION DETECTION ==========
+function checkCollision(x, z) {
+  const margin = 0.5;
+  for (const wall of walls) {
+    const halfW = wall.w / 2 + margin;
+    const halfD = wall.d / 2 + margin;
+    if (x > wall.x - halfW && x < wall.x + halfW &&
+        z > wall.z - halfD && z < wall.z + halfD) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function clampPosition(x, z) {
+  let newX = x, newZ = z;
+  const lim = currentLocation === "outdoor" ? WORLD_LIMIT : (currentLocation === "museum" ? 6.5 : 4.5);
+  newX = Math.max(-lim, Math.min(lim, newX));
+  newZ = Math.max(-lim, Math.min(lim, newZ));
+  
+  // Try sliding along walls
+  if (checkCollision(newX, z)) {
+    newX = x;
+  }
+  if (checkCollision(x, newZ)) {
+    newZ = z;
+  }
+  if (checkCollision(newX, newZ)) {
+    return { x, z };
+  }
+  return { x: newX, z: newZ };
+}
+
+// ========== PLAYER ==========
 function createLabel(text) {
   const c = document.createElement("canvas");
   c.width = 512; c.height = 128;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
   ctx.beginPath(); ctx.roundRect(16, 28, 480, 72, 22); ctx.fill();
   ctx.font = "bold 40px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillStyle = "#ffd60a";
   ctx.shadowColor = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur = 10;
+  ctx.shadowBlur = 8;
   ctx.fillText(String(text).slice(0, 16), 256, 64);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
-  s.scale.set(2.5, 0.62, 1); s.position.y = 3.3;
+  s.scale.set(2.5, 0.62, 1); s.position.y = 3.25;
   return s;
 }
 
@@ -607,7 +776,7 @@ function createChatBubble(text) {
   lines.push(line);
   lines.slice(0, 2).forEach((l, i) => ctx.fillText(l.trim(), 256, y + i * 38));
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
-  s.scale.set(3.0, 1.05, 1); s.position.y = 4.2;
+  s.scale.set(3.0, 1.05, 1); s.position.y = 4.15;
   return s;
 }
 
@@ -616,57 +785,49 @@ function createPlayerMesh(player, isMe = false) {
   const gender = isMe ? myGender : (player.gender || "boy");
   const c = isMe ? myColor : (player.color || (gender === "girl" ? "#ff85a1" : "#48cae4"));
 
-  // Shadow
   const sh = new THREE.Mesh(new THREE.CircleGeometry(0.55, 20),
-    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 }));
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = 0.02; g.add(sh);
 
-  // Body
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.05, 0.5),
-    new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 }));
+    new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 }));
   body.position.y = 1.15; body.castShadow = true; body.name = "body"; g.add(body);
 
-  // Head
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 0.72), mat(0xffdbac, 0.3));
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 0.72), mat(0xffdbac));
   head.position.y = 2.05; head.castShadow = true; head.name = "head"; g.add(head);
 
-  // Eyes
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
   const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.06), eyeMat);
   eyeL.position.set(-0.16, 2.12, 0.36); g.add(eyeL);
   const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.06), eyeMat);
   eyeR.position.set(0.16, 2.12, 0.36); g.add(eyeR);
-  
-  // Mouth (senyum)
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.05), new THREE.MeshBasicMaterial({ color: 0xc0392b }));
   mouth.position.set(0, 1.88, 0.36); g.add(mouth);
 
   if (gender === "girl") {
-    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.9, 0.78), mat(0xf48fb1, 0.5));
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.9, 0.78), mat(0xf48fb1));
     hair.position.y = 2.15; hair.castShadow = true; g.add(hair);
-    const bangs = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.25, 0.3), mat(0xf48fb1, 0.5));
+    const bangs = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.25, 0.3), mat(0xf48fb1));
     bangs.position.set(0, 2.4, 0.28); g.add(bangs);
-    const left = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), mat(0xf48fb1, 0.5));
+    const left = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), mat(0xf48fb1));
     left.position.set(-0.5, 1.7, 0.1); g.add(left);
-    const right = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), mat(0xf48fb1, 0.5));
+    const right = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), mat(0xf48fb1));
     right.position.set(0.5, 1.7, 0.1); g.add(right);
   } else {
-    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.28, 0.76), mat(0x2c3e50, 0.5));
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.28, 0.76), mat(0x2c3e50));
     hair.position.y = 2.42; hair.castShadow = true; g.add(hair);
   }
 
-  // Arms
-  const armMat = new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 });
+  const armMat = new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 });
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.95, 0.28), armMat);
   armL.position.set(-0.58, 1.1, 0); armL.castShadow = true; armL.name = "armL"; g.add(armL);
   const armR = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.95, 0.28), armMat);
   armR.position.set(0.58, 1.1, 0); armR.castShadow = true; armR.name = "armR"; g.add(armR);
 
-  // Legs
   const legColor = gender === "girl" ? 0xf8bbd0 : 0x2c3e50;
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.35), mat(legColor, 0.5));
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.35), mat(legColor));
   legL.position.set(-0.24, 0.42, 0); legL.castShadow = true; legL.name = "legL"; g.add(legL);
-  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.35), mat(legColor, 0.5));
+  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.35), mat(legColor));
   legR.position.set(0.24, 0.42, 0); legR.castShadow = true; legR.name = "legR"; g.add(legR);
 
   const labelText = isMe ? "⭐ YOU" : (player.name || "Player");
@@ -680,15 +841,23 @@ function createPlayerMesh(player, isMe = false) {
 function animatePlayer(mesh, isMoving, dt) {
   if (!mesh) return;
   const ud = mesh.userData;
-  if (isMoving) {
+  if (isMoving && !isSitting) {
     ud.walkPhase += dt * 10;
-    const swing = Math.sin(ud.walkPhase) * 0.5;
+    const swing = Math.sin(ud.walkPhase) * 0.45;
     ["armL", "armR", "legL", "legR"].forEach((n, i) => {
       const o = mesh.getObjectByName(n);
       if (o) o.rotation.x = (i % 2 === 0 ? 1 : -1) * swing * (n.startsWith("leg") ? 0.9 : 1);
     });
     const body = mesh.getObjectByName("body");
-    if (body) body.position.y = 1.15 + Math.abs(Math.sin(ud.walkPhase * 2)) * 0.05;
+    if (body) body.position.y = 1.15 + Math.abs(Math.sin(ud.walkPhase * 2)) * 0.04;
+  } else if (isSitting) {
+    // Sit animation
+    const body = mesh.getObjectByName("body");
+    if (body) body.position.y = 0.6;
+    const legL = mesh.getObjectByName("legL");
+    const legR = mesh.getObjectByName("legR");
+    if (legL) legL.rotation.x = Math.PI / 2;
+    if (legR) legR.rotation.x = Math.PI / 2;
   } else {
     ["armL", "armR", "legL", "legR"].forEach(n => {
       const o = mesh.getObjectByName(n);
@@ -718,22 +887,22 @@ function showBubble(mesh, text) {
   ud.bubbleTimer = 6.0;
 }
 
-// ==================== CAMERA ====================
+// ========== CAMERA + LOOK ==========
 const target = new THREE.Vector3();
 const camPos = new THREE.Vector3();
 
 function updateCamera() {
   if (!myData) return;
   const yOff = myData.y || 0;
-  const dist = 7.5;
-  const height = 5.8 + yOff * 0.25;
+  const dist = isSitting ? 4.5 : 7.5;
+  const height = isSitting ? 3.2 + yOff * 0.25 : 5.8 + yOff * 0.25;
   const yaw = camYaw;
   const pitch = Math.max(-0.6, Math.min(0.45, camPitch));
   const ox = Math.sin(yaw) * dist * Math.cos(pitch);
   const oz = Math.cos(yaw) * dist * Math.cos(pitch);
   const oy = height + Math.sin(pitch) * 3;
 
-  target.set(myData.x, 1.5 + yOff, myData.z);
+  target.set(myData.x, isSitting ? 0.8 + yOff : 1.5 + yOff, myData.z);
   camPos.set(myData.x + ox, oy, myData.z + oz);
   camera.position.lerp(camPos, 0.14);
   camera.lookAt(target);
@@ -762,7 +931,7 @@ function setupLookControls() {
   el.addEventListener("pointercancel", () => { isLooking = false; });
 }
 
-// ==================== NETWORK ====================
+// ========== NETWORK ==========
 function setupNetwork() {
   const setStatus = (t) => { const el = document.getElementById("status"); if (el) el.textContent = t; };
   const updateCount = () => {
@@ -847,7 +1016,7 @@ function setupNetwork() {
   });
 }
 
-// ==================== CONTROLS ====================
+// ========== CONTROLS ==========
 function setupControls() {
   const joystick = document.getElementById("joystick");
   const stick = document.getElementById("stick");
@@ -943,7 +1112,19 @@ function setupControls() {
 }
 
 function tryInteract() {
-  if (nearInteract && typeof nearInteract.onEnter === "function" && !isTransitioning) {
+  if (isSitting) {
+    // Stand up
+    isSitting = false;
+    sitTarget = null;
+    cinemaSeats.forEach(s => s.occupied = false);
+    if (cinemaVideo) {
+      cinemaGroup.remove(cinemaVideo);
+      cinemaVideo = null;
+    }
+    showBubble(myMesh, "Berdiri dari kursi 🚶");
+    return;
+  }
+  if (nearInteract && typeof nearInteract.onEnter === "function") {
     nearInteract.onEnter();
   }
 }
@@ -951,20 +1132,34 @@ function tryInteract() {
 function updateInteractUI() {
   const btn = document.getElementById("interactBtn");
   const prompt = document.getElementById("prompt");
-  if (nearInteract && !isTransitioning) {
-    if (btn) btn.style.display = "flex";
-    if (prompt) {
-      prompt.style.display = "block";
-      prompt.textContent = nearInteract.label || "🚪 Tekan untuk masuk";
-    }
+  if (isSitting) {
+    btn.style.display = "flex";
+    btn.textContent = "🚶";
+    prompt.style.display = "block";
+    prompt.textContent = "🚶 Berdiri";
+    return;
+  }
+  if (nearInteract) {
+    btn.style.display = "flex";
+    btn.textContent = "🚪";
+    prompt.style.display = "block";
+    prompt.textContent = nearInteract.label || "🚪 Tekan untuk masuk";
   } else {
-    if (btn) btn.style.display = "none";
-    if (prompt) prompt.style.display = "none";
+    btn.style.display = "none";
+    prompt.style.display = "none";
   }
 }
 
 function updateMovement(dt) {
-  if (!myData || !myMesh || isTransitioning) return;
+  if (!myData || !myMesh) return;
+  if (isSitting) {
+    // Stay in sitting position
+    myMesh.position.set(myData.x, myData.y || 0, myData.z);
+    animatePlayer(myMesh, false, dt);
+    // Still allow looking around
+    return;
+  }
+
   const keys = window._keys || {};
   const js = window._js || { x: 0, y: 0, active: false };
 
@@ -985,15 +1180,18 @@ function updateMovement(dt) {
   if (moving) {
     const len = Math.hypot(dx, dz);
     if (len > 1) { dx /= len; dz /= len; }
-    myData.x += dx * MOVE_SPEED * dt;
-    myData.z += dz * MOVE_SPEED * dt;
-    const lim = currentLocation === "outdoor" ? WORLD_LIMIT : (currentLocation === "museum" ? 6.5 : 4.2);
-    myData.x = Math.max(-lim, Math.min(lim, myData.x));
-    myData.z = Math.max(-lim, Math.min(lim, myData.z));
+    let newX = myData.x + dx * MOVE_SPEED * dt;
+    let newZ = myData.z + dz * MOVE_SPEED * dt;
+    
+    // Collision detection
+    const clamped = clampPosition(newX, newZ);
+    myData.x = clamped.x;
+    myData.z = clamped.z;
+    
     myMesh.rotation.y = Math.atan2(dx, dz);
   }
 
-  if (keys.jump && isGrounded) {
+  if (keys.jump && isGrounded && !isSitting) {
     myVelocityY = JUMP_FORCE;
     isGrounded = false;
     keys.jump = false;
@@ -1009,6 +1207,7 @@ function updateMovement(dt) {
   myMesh.position.set(myData.x, myData.y, myData.z);
   animatePlayer(myMesh, moving, dt);
 
+  // Interact detection
   nearInteract = null;
   const myPos = new THREE.Vector3(myData.x, 0, myData.z);
   for (const it of interactables) {
@@ -1039,6 +1238,29 @@ function updateMovement(dt) {
   });
 }
 
+function showPasswordModal() {
+  document.getElementById("passModal").style.display = "flex";
+  document.getElementById("passInput").value = "";
+  setTimeout(() => document.getElementById("passInput")?.focus(), 100);
+}
+document.getElementById("passCancel")?.addEventListener("click", () => {
+  document.getElementById("passModal").style.display = "none";
+});
+document.getElementById("passSubmit")?.addEventListener("click", tryPassword);
+document.getElementById("passInput")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") tryPassword();
+});
+function tryPassword() {
+  const val = (document.getElementById("passInput")?.value || "").trim().toLowerCase();
+  if (val === MUSEUM_PASSWORD.toLowerCase()) {
+    document.getElementById("passModal").style.display = "none";
+    enterLocation("museum");
+  } else {
+    const inp = document.getElementById("passInput");
+    if (inp) { inp.style.borderColor = "#ff1744"; setTimeout(() => inp.style.borderColor = "", 700); }
+  }
+}
+
 function hideLoading() {
   const l = document.getElementById("loading");
   if (!l) return;
@@ -1062,7 +1284,7 @@ function animate() {
   clouds.forEach((c, i) => {
     c.position.x += Math.sin(performance.now() * 0.00015 + i) * 0.3 * dt;
   });
-  if (water) water.rotation.z += dt * 0.02;
-  if (waterFountain) waterFountain.rotation.y += dt * 0.3;
+  if (water) water.rotation.z += dt * 0.03;
+  if (waterFountain) waterFountain.rotation.y += dt * 0.4;
   renderer.render(scene, camera);
 }
