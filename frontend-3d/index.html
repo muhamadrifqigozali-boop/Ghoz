@@ -13,7 +13,7 @@
 html,body{width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:#5dade2;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 canvas{display:block;position:fixed;inset:0;z-index:1}
 
-/* ===== START SCREEN ===== */
+/* START SCREEN */
 #startScreen{
   position:fixed;inset:0;z-index:200;
   background:linear-gradient(160deg,#ff9a9e 0%,#fecfef 40%,#a18cd1 100%);
@@ -26,16 +26,14 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
 .form-group label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;opacity:.95}
 .form-group input{
   width:100%;padding:12px 14px;border-radius:14px;border:2px solid rgba(255,255,255,.4);
-  background:rgba(255,255,255,.25);color:#fff;font-size:16px;font-weight:600;
-  outline:none;backdrop-filter:blur(8px);
+  background:rgba(255,255,255,.25);color:#fff;font-size:16px;font-weight:600;outline:none;
 }
 .form-group input::placeholder{color:rgba(255,255,255,.6)}
 .gender-row{display:flex;gap:12px;justify-content:center;margin-bottom:22px}
 .gender-btn{
   flex:1;max-width:130px;padding:14px 10px;border-radius:18px;
   border:3px solid transparent;background:rgba(255,255,255,.2);
-  color:#fff;font-weight:800;font-size:15px;cursor:pointer;
-  transition:all .2s;backdrop-filter:blur(6px);
+  color:#fff;font-weight:800;font-size:15px;cursor:pointer;transition:all .2s;
 }
 .gender-btn.boy{border-color:#4fc3f7}
 .gender-btn.girl{border-color:#ff80ab}
@@ -45,20 +43,18 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
   width:100%;max-width:300px;padding:14px;border:none;border-radius:16px;
   background:linear-gradient(135deg,#ff6b6b,#ee5a24);color:#fff;
   font-size:17px;font-weight:900;cursor:pointer;box-shadow:0 8px 24px rgba(238,90,36,.4);
-  transition:transform .15s;
 }
 #startBtn:active{transform:scale(.96)}
 
-/* ===== HUD ===== */
+/* HUD */
 #hud,#players{
   position:fixed;z-index:20;color:#fff;
   background:rgba(20,30,50,.72);border:2px solid rgba(255,255,255,.18);
   border-radius:16px;padding:10px 14px;
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.25);
+  backdrop-filter:blur(12px);pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.25);
 }
 #hud{top:max(12px,env(safe-area-inset-top));left:12px;min-width:160px}
-#playerName{font-weight:800;font-size:15px;letter-spacing:.3px}
+#playerName{font-weight:800;font-size:15px}
 #status{margin-top:3px;font-size:12px;opacity:.9}
 #players{top:max(12px,env(safe-area-inset-top));right:12px;font-size:13px;font-weight:600}
 #locationBadge{
@@ -70,70 +66,79 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
 
 /* Joystick */
 #joystick{
-  position:fixed;left:22px;bottom:max(28px,env(safe-area-inset-bottom));
-  width:130px;height:130px;z-index:30;border-radius:50%;
+  position:fixed;left:18px;bottom:max(24px,env(safe-area-inset-bottom));
+  width:120px;height:120px;z-index:30;border-radius:50%;
   background:rgba(255,255,255,.14);border:3px solid rgba(255,255,255,.28);
   box-shadow:inset 0 0 30px rgba(0,0,0,.15),0 8px 28px rgba(0,0,0,.2);
   backdrop-filter:blur(10px);touch-action:none;
 }
 #stick{
-  position:absolute;width:56px;height:56px;left:50%;top:50%;margin:-28px;
+  position:absolute;width:52px;height:52px;left:50%;top:50%;margin:-26px;
   border-radius:50%;background:rgba(255,255,255,.72);
   border:3px solid rgba(255,255,255,.9);box-shadow:0 4px 16px rgba(0,0,0,.25);
-  pointer-events:none;transition:transform .05s linear;
+  pointer-events:none;
 }
 #joystickLabel{
-  position:fixed;left:28px;bottom:max(6px,env(safe-area-inset-bottom));
-  z-index:29;color:rgba(255,255,255,.65);font-size:10px;font-weight:600;
-  pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.4);
+  position:fixed;left:22px;bottom:max(4px,env(safe-area-inset-bottom));
+  z-index:29;color:rgba(255,255,255,.65);font-size:9px;font-weight:600;pointer-events:none;
 }
 
-/* Jump + Interact */
+/* Buttons */
 #jumpBtn,#interactBtn{
-  position:fixed;z-index:30;width:64px;height:64px;border-radius:50%;
+  position:fixed;z-index:30;width:60px;height:60px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
-  font-size:24px;color:#fff;font-weight:900;touch-action:none;
-  border:3px solid rgba(255,255,255,.45);transition:transform .1s;
+  font-size:22px;color:#fff;font-weight:900;touch-action:none;
+  border:3px solid rgba(255,255,255,.45);
 }
 #jumpBtn{
-  right:24px;bottom:max(100px,calc(env(safe-area-inset-bottom) + 80px));
+  right:20px;bottom:max(90px,calc(env(safe-area-inset-bottom) + 70px));
   background:linear-gradient(145deg,#ff6b6b,#ee5a24);
   box-shadow:0 6px 20px rgba(238,90,36,.45);
 }
 #interactBtn{
-  right:24px;bottom:max(28px,env(safe-area-inset-bottom));
+  right:20px;bottom:max(22px,env(safe-area-inset-bottom));
   background:linear-gradient(145deg,#00c853,#00a844);
   box-shadow:0 6px 20px rgba(0,200,83,.4);display:none;
 }
 #jumpBtn:active,#interactBtn:active{transform:scale(.9)}
 
 /* Chat */
+#chatToggle{
+  position:fixed;right:20px;bottom:max(155px,calc(env(safe-area-inset-bottom) + 135px));
+  z-index:30;width:50px;height:50px;border-radius:50%;
+  background:linear-gradient(145deg,#7c4dff,#536dfe);border:3px solid rgba(255,255,255,.4);
+  color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 5px 18px rgba(124,77,255,.4);cursor:pointer;
+}
 #chatBar{
-  position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));
-  transform:translateX(-50%);z-index:40;width:min(320px,90vw);
+  position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));
+  transform:translateX(-50%);z-index:40;width:min(300px,88vw);
   display:none;gap:8px;align-items:center;
 }
 #chatInput{
-  flex:1;padding:11px 14px;border-radius:22px;border:2px solid rgba(255,255,255,.3);
-  background:rgba(20,30,50,.75);color:#fff;font-size:14px;outline:none;
-  backdrop-filter:blur(12px);
+  flex:1;padding:10px 14px;border-radius:22px;border:2px solid rgba(255,255,255,.3);
+  background:rgba(20,30,50,.8);color:#fff;font-size:14px;outline:none;
 }
-#chatInput::placeholder{color:rgba(255,255,255,.5)}
 #chatSend{
-  width:44px;height:44px;border-radius:50%;border:none;
-  background:linear-gradient(135deg,#7c4dff,#536dfe);color:#fff;font-size:18px;
+  width:42px;height:42px;border-radius:50%;border:none;
+  background:linear-gradient(135deg,#7c4dff,#536dfe);color:#fff;font-size:16px;
   display:flex;align-items:center;justify-content:center;cursor:pointer;
-  box-shadow:0 4px 14px rgba(124,77,255,.4);
-}
-#chatToggle{
-  position:fixed;right:24px;bottom:max(170px,calc(env(safe-area-inset-bottom) + 150px));
-  z-index:30;width:52px;height:52px;border-radius:50%;
-  background:linear-gradient(145deg,#7c4dff,#536dfe);border:3px solid rgba(255,255,255,.4);
-  color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 5px 18px rgba(124,77,255,.4);cursor:pointer;
 }
 
-/* Password Modal */
+/* Chat History */
+#chatHistory{
+  position:fixed;left:12px;bottom:max(160px,calc(env(safe-area-inset-bottom)+150px));
+  z-index:25;width:min(260px,70vw);max-height:180px;overflow-y:auto;
+  background:rgba(15,20,35,.78);border-radius:14px;padding:8px 10px;
+  border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(10px);
+  display:none;pointer-events:none;font-size:12px;color:#fff;
+}
+#chatHistory .msg{margin-bottom:6px;line-height:1.35}
+#chatHistory .msg .who{font-weight:800;color:#81d4fa}
+#chatHistory .msg .who.me{color:#ff80ab}
+#chatHistory .msg .txt{opacity:.95}
+
+/* Password */
 #passModal{
   position:fixed;inset:0;z-index:150;background:rgba(0,0,0,.65);
   display:none;align-items:center;justify-content:center;padding:20px;
@@ -141,7 +146,7 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
 #passModal .box{
   background:linear-gradient(145deg,#2c3e50,#1a252f);border-radius:22px;
   padding:28px 24px;width:100%;max-width:320px;text-align:center;color:#fff;
-  border:2px solid rgba(255,255,255,.15);box-shadow:0 20px 50px rgba(0,0,0,.5);
+  border:2px solid rgba(255,255,255,.15);
 }
 #passModal h3{font-size:20px;margin-bottom:6px}
 #passModal p{font-size:13px;opacity:.8;margin-bottom:16px}
@@ -150,29 +155,31 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
   background:rgba(255,255,255,.1);color:#fff;font-size:18px;text-align:center;
   letter-spacing:4px;outline:none;margin-bottom:14px;
 }
-#passSubmit,#passCancel{
-  padding:10px 22px;border-radius:12px;border:none;font-weight:700;font-size:14px;cursor:pointer;margin:0 4px;
-}
+#passSubmit,#passCancel{padding:10px 22px;border-radius:12px;border:none;font-weight:700;font-size:14px;cursor:pointer;margin:0 4px}
 #passSubmit{background:linear-gradient(135deg,#ff6b6b,#ee5a24);color:#fff}
 #passCancel{background:rgba(255,255,255,.15);color:#fff}
 
-/* Prompt near door */
 #prompt{
-  position:fixed;bottom:max(160px,calc(env(safe-area-inset-bottom)+140px));left:50%;
-  transform:translateX(-50%);z-index:25;background:rgba(0,0,0,.7);color:#fff;
+  position:fixed;bottom:max(150px,calc(env(safe-area-inset-bottom)+130px));left:50%;
+  transform:translateX(-50%);z-index:25;background:rgba(0,0,0,.75);color:#fff;
   padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600;
-  backdrop-filter:blur(8px);display:none;white-space:nowrap;
-  border:1px solid rgba(255,255,255,.2);
+  display:none;white-space:nowrap;border:1px solid rgba(255,255,255,.2);
+  pointer-events:none;
 }
 
-/* Loading */
+/* Look hint */
+#lookHint{
+  position:fixed;top:50%;right:16px;transform:translateY(-50%);
+  z-index:15;color:rgba(255,255,255,.35);font-size:11px;font-weight:600;
+  writing-mode:vertical-rl;pointer-events:none;display:none;
+}
+
 #loading{
   position:fixed;inset:0;z-index:100;
   display:flex;align-items:center;justify-content:center;flex-direction:column;
-  background:linear-gradient(160deg,#5dade2 0%,#3498db 50%,#2980b9 100%);
-  color:#fff;transition:opacity .5s ease;
+  background:linear-gradient(160deg,#5dade2,#3498db,#2980b9);color:#fff;transition:opacity .5s;
 }
-#loadingTitle{font-size:32px;font-weight:900;letter-spacing:2px;text-shadow:0 4px 16px rgba(0,0,0,.3);margin-bottom:6px}
+#loadingTitle{font-size:32px;font-weight:900;letter-spacing:2px;margin-bottom:6px}
 #loadingSub{font-size:14px;opacity:.85;margin-bottom:4px}
 #loadingText{font-size:13px;opacity:.75}
 .loader{width:42px;height:42px;margin-top:22px;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .75s linear infinite}
@@ -183,16 +190,13 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
 </head>
 <body>
 
-<!-- START SCREEN -->
 <div id="startScreen">
   <h1>GHOZ WORLD</h1>
   <div class="sub">Tempat hangout spesial buat kita ❤️</div>
-  
   <div class="form-group">
     <label>Nickname kamu</label>
     <input type="text" id="nickInput" placeholder="Tulis nama panggilan..." maxlength="16" autocomplete="off">
   </div>
-  
   <div class="form-group">
     <label>Pilih Karakter</label>
     <div class="gender-row">
@@ -200,11 +204,9 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
       <button class="gender-btn girl" data-gender="girl">👧 Cewek<br><small>Pink Cute</small></button>
     </div>
   </div>
-  
   <button id="startBtn">Masuk Dunia ✨</button>
 </div>
 
-<!-- GAME UI -->
 <div id="loading" class="hidden">
   <div id="loadingTitle">GHOZ WORLD</div>
   <div id="loadingSub">✨ Hangout Place ✨</div>
@@ -212,10 +214,7 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
   <div class="loader"></div>
 </div>
 
-<div id="hud" class="hidden">
-  <div id="playerName">Player</div>
-  <div id="status">Menghubungkan...</div>
-</div>
+<div id="hud" class="hidden"><div id="playerName">Player</div><div id="status">Menghubungkan...</div></div>
 <div id="players" class="hidden">👥 <span id="playerCount">1</span> Player</div>
 <div id="locationBadge">📍 Outdoor</div>
 
@@ -224,11 +223,13 @@ canvas{display:block;position:fixed;inset:0;z-index:1}
 <div id="jumpBtn" class="hidden">⬆</div>
 <div id="interactBtn" class="hidden">🚪</div>
 <div id="chatToggle" class="hidden">💬</div>
+<div id="lookHint" class="hidden">Geser layar → lihat sekeliling</div>
 
 <div id="chatBar">
   <input type="text" id="chatInput" placeholder="Ketik pesan..." maxlength="60" autocomplete="off">
   <button id="chatSend">➤</button>
 </div>
+<div id="chatHistory"></div>
 
 <div id="prompt">Tekan 🚪 untuk masuk</div>
 
