@@ -4,7 +4,7 @@
 
 // GANTI dengan URL backend hasil deploy.
 // Contoh: https://nama-backend.up.railway.app
-const BACKEND_URL = "GANTI_DENGAN_URL_BACKEND";
+const BACKEND_URL = "ghoz-production.up.railway.app";
 
 const WORLD_LIMIT = 14;
 const MOVE_SPEED = 4.0; // unit per detik
